@@ -3,7 +3,11 @@
     "allow": [
       "Bash(python transform_customers.py)",
       "Bash(pip install *)",
-      "Bash(python *)"
+      "Bash(python *)",
+      "PowerShell(Get-ChildItem \"D:\\\\BankSight AI Project\" | ForEach-Object { Write-Output \"$\\($_.Name\\) | $\\($_.FullName\\) | $\\($_.Length\\)\" })",
+      "PowerShell(python -c $script)",
+      "mcp__claude_ai_Google_Drive__search_files",
+      "mcp__claude_ai_Google_Drive__list_recent_files"
     ]
   }
 }
