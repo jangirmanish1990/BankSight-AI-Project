@@ -291,3 +291,17 @@ streamlit run app.py
 - When generating reports, always include: query date, total records analysed, and data range
 - The `.claude/skills/churn-analysis/SKILL.md` skill should be loaded for any churn-related query
 - Power BI connects to `dashboard/*.csv` files — never delete or rename these files mid-session
+
+## Agent Thresholds & Benchmarks
+(All agents must reference these values)
+
+- Churn baseline: 21% (681/3225) — alert if exceeds 25%
+- NPS range: 0–10 scale (not 0–100)
+- Currency: INR (₹) only — never USD
+- Date format: DD-MMM-YYYY (e.g. 07-May-2026)
+- Anomaly threshold: amount > 2× customer monthly average
+- Churn risk combo: NPS ≤ 3 + missed EMI in same month
+- High risk segment: Basic + credit_score < 500
+- Row limit per query: 100 (unless user specifies otherwise)
+- Report save path: reports/ (Excel/PDF), dashboard/ (CSV)
+- Google Drive folder: BankSight AI/Reports/[YYYY-MM]/
