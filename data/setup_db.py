@@ -11,12 +11,15 @@ Spec reference: .claude/specs/01-data-setup.md
 """
 
 import os
+import sys
 import random
 import sqlite3
 import pandas as pd
 from datetime import datetime, timedelta
 from faker import Faker
 from sqlalchemy import create_engine
+
+sys.stdout.reconfigure(encoding="utf-8")
 
 random.seed(42)
 fake = Faker("en_IN")

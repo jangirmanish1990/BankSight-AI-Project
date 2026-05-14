@@ -15,8 +15,8 @@ Spec reference: .claude/specs/02-agent-design.md
 import os
 import time
 import json
-import anthropic
 import pandas as pd
+from openai import OpenAI
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -149,25 +149,24 @@ def run_analysis_agent(
     # Step 2 — Prepare data summary for Claude
     data_summary = _prepare_data_summary(df, context, filters)
 
-    # Step 3 — Call Claude API
+    # Step 3 — Call OpenAI API
     try:
-        client = anthropic.Anthropic()
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+        client = OpenAI()
+        response = client.chat.completions.create(
+            model="gpt-4o",
             max_tokens=1000,
-            system=ANALYSIS_SYSTEM_PROMPT,
-            messages=[{
-                "role": "user",
-                "content": (
+            messages=[
+                {"role": "system", "content": ANALYSIS_SYSTEM_PROMPT},
+                {"role": "user",   "content": (
                     f"Analyse this banking data and generate insights.\n"
                     f"Context: {context} analysis\n"
                     f"SQL used: {sql_output.get('sql_used', 'N/A')}\n\n"
                     f"Data summary:\n{data_summary}"
-                )
-            }]
+                )}
+            ]
         )
 
-        raw = response.content[0].text.strip()
+        raw = response.choices[0].message.content.strip()
 
         # Strip markdown fences if present
         raw = raw.replace("```json", "").replace("```", "").strip()

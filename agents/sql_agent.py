@@ -16,8 +16,8 @@ import os
 import re
 import time
 import sqlite3
-import anthropic
 import pandas as pd
+from openai import OpenAI
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -162,10 +162,10 @@ def validate_sql(sql: str) -> tuple[bool, str]:
 # ---------------------------------------------------------------------------
 def generate_sql(query: str, filters: dict = None) -> str:
     """
-    Calls Claude API to convert natural language to SQL.
+    Calls OpenAI API to convert natural language to SQL.
     filters: optional dict with keys like segment, city, period_start, period_end
     """
-    client = anthropic.Anthropic()
+    client = OpenAI()
 
     # Build filter context if provided
     filter_context = ""
@@ -188,16 +188,18 @@ def generate_sql(query: str, filters: dict = None) -> str:
 
     user_message = f"{query}{filter_context}"
 
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
+    response = client.chat.completions.create(
+        model="gpt-4o",
         max_tokens=1000,
-        system=SQL_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_message}]
+        messages=[
+            {"role": "system", "content": SQL_SYSTEM_PROMPT},
+            {"role": "user",   "content": user_message}
+        ]
     )
 
-    sql = response.content[0].text.strip()
+    sql = response.choices[0].message.content.strip()
 
-    # Strip markdown code fences if Claude added them
+    # Strip markdown code fences if model added them
     sql = re.sub(r"```sql|```", "", sql).strip()
 
     return sql

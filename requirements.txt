@@ -5,7 +5,7 @@
 # ============================================================
 
 # ── Core AI ─────────────────────────────────────────────────
-anthropic==0.100.0          # Claude API — agents, subagents, slash commands
+openai==1.82.0              # OpenAI API — powers SQL and Analysis agents
 
 # ── Streamlit UI ─────────────────────────────────────────────
 streamlit==1.57.0           # Chat interface and dashboard UI

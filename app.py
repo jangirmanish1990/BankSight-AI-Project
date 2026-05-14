@@ -570,18 +570,23 @@ def render_charts(chart_data):
             )
             fig.add_hline(y=21, line_dash="dash", line_color="#6B7A99",
                           annotation_text="Baseline 21%",
-                          annotation_position="top right")
+                          annotation_position="bottom right",
+                          annotation_font_size=11,
+                          annotation_font_color="#6B7A99")
             fig.add_hline(y=25, line_dash="dot", line_color="#D93025",
                           annotation_text="Critical 25%",
-                          annotation_position="top left")
+                          annotation_position="bottom left",
+                          annotation_font_size=11,
+                          annotation_font_color="#D93025")
             fig.update_layout(
                 plot_bgcolor="#FFFFFF", paper_bgcolor="#FFFFFF",
                 font_family="DM Sans", showlegend=False,
                 title_font_size=14, title_font_color="#1F3864",
                 margin=dict(t=40, b=20, l=10, r=10),
-                height=280,
+                height=300,
+                yaxis=dict(range=[0, 32]),
             )
-            fig.update_traces(textposition="outside")
+            fig.update_traces(textposition="outside", textfont_size=12)
             st.plotly_chart(fig, use_container_width=True)
 
     # Chart 2 — Churn rate by city
@@ -894,14 +899,18 @@ def _render_inline_chart(df: pd.DataFrame):
             text=seg["churn_rate"].apply(lambda x: f"{x}%"),
         )
         fig.add_hline(y=21, line_dash="dash", line_color="#6B7A99",
-                      annotation_text="Baseline 21%")
+                      annotation_text="Baseline 21%",
+                      annotation_position="bottom right",
+                      annotation_font_size=11,
+                      annotation_font_color="#6B7A99")
         fig.update_layout(
-            height=260, showlegend=False,
+            height=280, showlegend=False,
             plot_bgcolor="#FFFFFF", paper_bgcolor="#FFFFFF",
             margin=dict(t=36,b=10,l=10,r=10),
             font_family="DM Sans",
+            yaxis=dict(range=[0, 32]),
         )
-        fig.update_traces(textposition="outside")
+        fig.update_traces(textposition="outside", textfont_size=12)
         st.plotly_chart(fig, use_container_width=True)
 
     # Transaction spend trend

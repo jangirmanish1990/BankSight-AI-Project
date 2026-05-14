@@ -1,0 +1,11 @@
+﻿customer_id,credit_score,gender,age,tenure,balance,products_number,estimated_salary,city,nps_score,segment,joining_date,account_type,kyc_status,report_generated_at,report_date,data_source,baseline_churn_rate,churn_status,has_critical_anomaly,churn_risk_combo
+15794171,475,Female,45,0,12658413.69,1,2623151.5,Delhi,0,Premium,24-10-2025,Savings,Verified,14-May-2026 13:12,14-May-2026,banking_mock.db,21.0,CRITICAL,True,1
+15703793,738,Male,58,2,12609520.08,4,2675087.52,Delhi,2,Premium,13-03-2024,Salary,Verified,14-May-2026 13:12,14-May-2026,banking_mock.db,21.0,CRITICAL,True,1
+15637753,751,Male,50,2,9134637.41,1,7279005.25,Delhi,3,Premium,10-08-2023,Salary,Pending,14-May-2026 13:12,14-May-2026,banking_mock.db,21.0,CRITICAL,True,1
+15694408,749,Male,40,1,13132299.85,1,17239609.0,Delhi,0,Premium,22-11-2024,Savings,Verified,14-May-2026 13:12,14-May-2026,banking_mock.db,21.0,CRITICAL,True,1
+15745844,642,Female,40,6,12209494.76,2,8117435.4,Delhi,1,Premium,10-11-2019,Salary,Verified,14-May-2026 13:12,14-May-2026,banking_mock.db,21.0,CRITICAL,True,1
+15674551,535,Male,40,7,10536402.82,1,766338.01,Delhi,1,Premium,15-05-2018,Savings,Verified,14-May-2026 13:12,14-May-2026,banking_mock.db,21.0,CRITICAL,True,1
+15593782,816,Female,38,5,12339248.55,3,6779276.0,Delhi,2,Premium,12-06-2020,Savings,Pending,14-May-2026 13:12,14-May-2026,banking_mock.db,21.0,CRITICAL,True,1
+15683625,703,Male,37,1,14119568.9,1,1944939.83,Delhi,5,Premium,08-06-2024,Savings,Pending,14-May-2026 13:12,14-May-2026,banking_mock.db,21.0,CRITICAL,True,0
+15585865,673,Female,38,2,16033437.82,2,12718498.34,Delhi,1,Premium,05-08-2023,Savings,Verified,14-May-2026 13:12,14-May-2026,banking_mock.db,21.0,CRITICAL,True,1
+15682048,605,Female,51,3,12839878.18,1,6327186.43,Delhi,2,Premium,29-10-2022,Current,Verified,14-May-2026 13:12,14-May-2026,banking_mock.db,21.0,CRITICAL,True,1

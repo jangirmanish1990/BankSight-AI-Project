@@ -19,7 +19,8 @@
       "Bash(python3.10 --version)",
       "Bash(export PATH=\"$PATH:/usr/local/bin:/usr/bin:/mnt/c/Python311:/mnt/c/Python310:/mnt/c/Users/$\\(whoami\\)/AppData/Local/Programs/Python/Python311\")",
       "Bash(D:/LangGraph/Claude code/expense-tracker/expense-tracker/venv/Scripts/python.exe *)",
-      "Bash(D:/LangGraph/Claude code/expense-tracker/expense-tracker/venv/Scripts/pip.exe install *)"
+      "Bash(D:/LangGraph/Claude code/expense-tracker/expense-tracker/venv/Scripts/pip.exe install *)",
+      "PowerShell(Get-Process *)"
     ]
   }
 }
