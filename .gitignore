@@ -1,0 +1,29 @@
+# .gitignore
+
+# Secret keys — NEVER push these
+.env
+
+# Database — too large for GitHub
+data/banking_mock.db
+
+# Auto-generated outputs — not needed in repo
+reports/
+dashboard/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Virtual environment
+banksight_env/
+venv/
+.venv/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Raw data CSVs (large files)
+data/raw/
