@@ -7,7 +7,19 @@
       "PowerShell(Get-ChildItem \"D:\\\\BankSight AI Project\" | ForEach-Object { Write-Output \"$\\($_.Name\\) | $\\($_.FullName\\) | $\\($_.Length\\)\" })",
       "PowerShell(python -c $script)",
       "mcp__claude_ai_Google_Drive__search_files",
-      "mcp__claude_ai_Google_Drive__list_recent_files"
+      "mcp__claude_ai_Google_Drive__list_recent_files",
+      "PowerShell(py *)",
+      "PowerShell(& \"D:\\\\BankSight AI Project\\\\venv\\\\Scripts\\\\python.exe\" -c \"import sqlite3, pandas; print\\('OK'\\)\")",
+      "Bash(dir \"D:\\\\BankSight AI Project\\\\reports\\\\\" 2>&1 *)",
+      "Bash(dir *)",
+      "mcp__ide__executeCode",
+      "Read(//usr/**)",
+      "Bash(command -v python3.11)",
+      "Bash(python3.11 --version)",
+      "Bash(python3.10 --version)",
+      "Bash(export PATH=\"$PATH:/usr/local/bin:/usr/bin:/mnt/c/Python311:/mnt/c/Python310:/mnt/c/Users/$\\(whoami\\)/AppData/Local/Programs/Python/Python311\")",
+      "Bash(D:/LangGraph/Claude code/expense-tracker/expense-tracker/venv/Scripts/python.exe *)",
+      "Bash(D:/LangGraph/Claude code/expense-tracker/expense-tracker/venv/Scripts/pip.exe install *)"
     ]
   }
 }

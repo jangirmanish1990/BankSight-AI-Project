@@ -1,144 +1,321 @@
 """
 BankSight AI — Churn Report Generator
-Report Agent: ChurnReport_2026-05-07_Apr-May-2024
-Generates Excel, PDF, and PowerBI CSV from SQL + Analysis + Anomaly Agent outputs.
+Report Agent: Generates Excel, PDF, and PowerBI CSV
+from SQL + Analysis + Anomaly Agent outputs.
+
+FIXES APPLIED:
+  1. Relative BASE_DIR — works on any machine
+  2. Live data from banking_mock.db via SQLite
+  3. Customer-level CSV rows for Power BI slicing
+  4. ReportLab doc constructor fix (footer via build only)
 """
 
 import os
 import csv
+import sqlite3
+import pandas as pd
 from datetime import datetime
 
 # ---------------------------------------------------------------------------
-# Paths
+# Fix 1 — Relative paths (works on any machine, any OS)
 # ---------------------------------------------------------------------------
-BASE_DIR    = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-REPORTS_DIR = os.path.join(BASE_DIR, "reports")
+BASE_DIR      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPORTS_DIR   = os.path.join(BASE_DIR, "reports")
 DASHBOARD_DIR = os.path.join(BASE_DIR, "dashboard")
+DB_PATH       = os.path.join(BASE_DIR, "data", "banking_mock.db")
 
-EXCEL_PATH = os.path.join(REPORTS_DIR, "ChurnReport_2026-05-07_Apr-May-2024.xlsx")
-PDF_PATH   = os.path.join(REPORTS_DIR, "ChurnReport_2026-05-07_Apr-May-2024.pdf")
-CSV_PATH   = os.path.join(DASHBOARD_DIR, "PowerBI_Churn_2026-05-07.csv")
-
-os.makedirs(REPORTS_DIR, exist_ok=True)
+os.makedirs(REPORTS_DIR,   exist_ok=True)
 os.makedirs(DASHBOARD_DIR, exist_ok=True)
 
-RUN_TS = "07-May-2026 00:00"
+# Dynamic file names based on today's date
+RUN_DATE  = datetime.now().strftime("%Y-%m-%d")
+RUN_TS    = datetime.now().strftime("%d-%b-%Y %H:%M")
+RUN_LABEL = datetime.now().strftime("%d-%b-%Y")
+
+EXCEL_PATH = os.path.join(REPORTS_DIR,   f"ChurnReport_{RUN_DATE}.xlsx")
+PDF_PATH   = os.path.join(REPORTS_DIR,   f"ChurnReport_{RUN_DATE}.pdf")
+CSV_PATH   = os.path.join(DASHBOARD_DIR, f"PowerBI_Churn_{RUN_DATE}.csv")
 
 # ---------------------------------------------------------------------------
-# Shared data structures
+# Fix 2 — Load live data from banking_mock.db
 # ---------------------------------------------------------------------------
-KPIS = [
-    ("Total Customers",           "3,225"),
-    ("Total Churned",             "681"),
-    ("Churn Rate",                "21.12%"),
-    ("Baseline Churn Rate",       "21.00%"),
-    ("Avg Balance (Churned)",     u"₹85,51,041.11"),
-    ("Avg NPS (Churned)",         "3.16 / 10"),
-    ("Avg Credit Score (Churned)","639.88"),
-]
+def load_data_from_db(period_start=None, period_end=None):
+    """
+    Loads all required data from banking_mock.db.
+    period_start / period_end: 'YYYY-MM-DD' strings (optional filter).
+    Returns a dict of DataFrames and computed KPI values.
+    """
+    if not os.path.exists(DB_PATH):
+        raise FileNotFoundError(
+            f"Database not found at {DB_PATH}. "
+            "Please run data/setup_db.py first."
+        )
 
-SEGMENT_DATA = [
-    ("Premium",  420, 1659, 25.32, "CRITICAL"),
-    ("Standard",  89,  431, 20.65, "NORMAL"),
-    ("Basic",    172, 1135, 15.15, "NORMAL"),
-]
+    conn = sqlite3.connect(DB_PATH)
 
-CITY_DATA = [
-    ("Mumbai",    119, 530, 22.45),
-    ("Hyderabad", 117, 547, 21.39),
-    ("Bengaluru", 116, 548, 21.17),
-    ("Pune",      113, 530, 21.32),
-    ("Gurugram",  108, 524, 20.61),
-    ("Delhi",     108, 546, 19.78),
-]
+    # --- Customers ---
+    customers_df = pd.read_sql("SELECT * FROM customers", conn)
+    total_customers = len(customers_df)
+    churned_df      = customers_df[customers_df["churn"] == 1].copy()
+    total_churned   = len(churned_df)
+    churn_rate      = round((total_churned / total_customers) * 100, 2)
+    avg_balance     = round(churned_df["balance"].mean(), 2)
+    avg_nps         = round(churned_df["nps_score"].mean(), 2)
+    avg_credit      = round(churned_df["credit_score"].mean(), 2)
 
-TOP10_CUSTOMERS = [
-    (1,  "2,36,54,671.93", 655, 4, "Premium",  "Pune",      3),
-    (2,  "2,00,95,423.74", 584, 3, "Premium",  "Bengaluru", 2),
-    (3,  "1,99,66,081.95", 850, 4, "Premium",  "Bengaluru", 1),
-    (4,  "1,97,76,861.99", 672, 3, "Premium",  "Delhi",     2),
-    (5,  "1,92,06,264.34", 705, 1, "Premium",  "Delhi",     5),
-    (6,  "1,90,15,905.48", 625, 4, "Premium",  "Delhi",     8),
-    (7,  "1,88,26,725.12", 487, 2, "Premium",  "Delhi",     4),
-    (8,  "1,80,88,986.00", 742, 5, "Premium",  "Pune",      2),
-    (9,  "1,79,34,644.93", 667, 5, "Premium",  "Hyderabad", 8),
-    (10, "1,75,25,854.39", 713, 0, "Premium",  "Gurugram",  0),
-]
+    # --- Segment breakdown ---
+    seg_group = customers_df.groupby("segment").agg(
+        total=("customer_id", "count")
+    ).reset_index()
+    churn_seg = churned_df.groupby("segment").agg(
+        churned=("customer_id", "count")
+    ).reset_index()
+    seg_df = seg_group.merge(churn_seg, on="segment", how="left").fillna(0)
+    seg_df["churn_rate"] = round(
+        (seg_df["churned"] / seg_df["total"]) * 100, 2)
+    seg_df["status"] = seg_df["churn_rate"].apply(
+        lambda r: "CRITICAL" if r > 25 else "WARNING" if r > 21 else "NORMAL")
 
-LOAN_EMI = [
-    ("Total Loans",               "400"),
-    ("Missed EMIs",               "67 (16.75%)"),
-    ("Delayed EMIs",              "57 (14.25%)"),
-    ("Combined Stress Rate",      "31%"),
-    ("Churned + Missed EMI",      "16 customers"),
-]
+    # --- City breakdown ---
+    city_group = customers_df.groupby("city").agg(
+        total=("customer_id", "count")
+    ).reset_index()
+    churn_city = churned_df.groupby("city").agg(
+        churned=("customer_id", "count")
+    ).reset_index()
+    city_df = city_group.merge(churn_city, on="city", how="left").fillna(0)
+    city_df["churn_rate"] = round(
+        (city_df["churned"] / city_df["total"]) * 100, 2)
+    city_df = city_df.sort_values("churned", ascending=False)
 
-KEY_FINDINGS = [
-    "Premium segment churn at 25.32% has crossed the CRITICAL threshold (>25%).",
-    "Churned customers average NPS of 3.16/10 — dangerously close to the 3.0 churn risk floor.",
-    "Top 10 churned customers by balance are exclusively Premium; skewed heavily toward short-tenure (0-5 years).",
-    "100% of top 100 transactions from churned customers in the reference period are flagged as anomalies.",
-    "31% combined EMI stress rate signals systemic repayment pressure.",
-    "Mumbai leads churn volume (119); Delhi has the lowest rate (19.78%) — geographic divergence worth investigating.",
-]
+    # --- Top 10 churned by balance ---
+    top10_df = churned_df.nlargest(10, "balance")[
+        ["customer_id", "balance", "credit_score",
+         "nps_score", "segment", "city", "tenure"]
+    ].reset_index(drop=True)
+    top10_df.index += 1
 
-RECOMMENDATIONS = [
-    ("Activate Premium Segment Retention Protocol Immediately",
-     "Deploy targeted retention campaign; assign dedicated relationship managers to all Premium customers "
-     "with NPS <= 4; focus on Delhi and Bengaluru where high-balance exits are concentrated. "
-     "Target: reduce Premium churn below 23% within 60 days."),
-    ("Implement Pre-Churn Transaction Spike Alert as Real-Time Trigger",
-     "Configure Anomaly Agent to escalate customers with 2+ anomalous transactions in 30-day window "
-     "+ NPS <= 4 directly to retention desk within 24 hours."),
-    ("Cross-Reference EMI Stress List Against NPS to Identify Next-Wave Churn Cohort",
-     "Run query joining loan_emi (Missed/Delayed) against customers with NPS <= 3; estimated 30-50 "
-     "customers at immediate risk; initiate outreach by 14-May-2026."),
-]
+    # --- Loan / EMI ---
+    loan_df = pd.read_sql("SELECT * FROM loan_emi", conn)
+    total_loans   = len(loan_df)
+    missed_count  = len(loan_df[loan_df["emi_status"] == "Missed"])
+    delayed_count = len(loan_df[loan_df["emi_status"] == "Delayed"])
+    missed_pct    = round((missed_count  / total_loans) * 100, 2)
+    delayed_pct   = round((delayed_count / total_loans) * 100, 2)
+    stress_rate   = round(missed_pct + delayed_pct, 2)
 
-ANOMALIES = [
-    ("ANO-001", "Premium Segment Churn Rate Breach (25.32% > 25%)",                    "CRITICAL", 9,  "New"),
-    ("ANO-002", "Mass High-Balance Premium Churn — 10 customers above Rs 1 Cr",        "CRITICAL", 10, "New"),
-    ("ANO-003", "Churn Risk Combo — NPS 3 + Missed EMI (1 confirmed customer)",        "CRITICAL", 9,  "New"),
-    ("ANO-004", "Churn Risk Combo — NPS 3 (1 customer, EMI verification pending)",     "CRITICAL", 8,  "New"),
-    ("ANO-005", "Churn Risk Combo — NPS 0 and NPS 1 (2 extreme dissatisfaction cases)","CRITICAL", 9,  "New"),
-    ("ANO-006", "Portfolio EMI Stress Rate 31% (threshold 30%)",                        "WARNING",  6,  "New"),
-    ("ANO-007", "Inactivity Flag — 3 high-balance Premium customers inactive before churn","WARNING",7, "New"),
-    ("ANO-008", "Segment-Credit Score Mismatch — Premium customer with credit_score 487","WARNING", 7,  "New"),
-    ("ANO-009", "Spend Spike Pre-Churn — 100 anomalous transactions in period",         "WARNING",  6,  "New"),
-    ("ANO-010", "In-Period Missed EMI — 2 churned customers with missed EMI in window", "WARNING",  6,  "New"),
-]
+    # Churn risk combo: churned + missed EMI
+    churned_ids      = set(churned_df["customer_id"].tolist())
+    missed_ids       = set(
+        loan_df[loan_df["emi_status"] == "Missed"]["customer_id"].tolist())
+    churn_risk_count = len(churned_ids & missed_ids)
 
-PRIORITY_LIST = [
-    (1, "Premium, Rs 1.75Cr balance, NPS 0, Tenure 0 yrs",
-        "Absolute minimum NPS; immediate acquisition-and-loss event"),
-    (2, "Premium, Rs 2.36Cr balance, NPS 4, active_member=1",
-        "Highest balance loss; possible retention window remaining"),
-    (3, "Premium, Rs 1.92Cr balance, NPS 1, active_member=0, Tenure 5 yrs",
-        "Triple-signal: low NPS + inactive + long tenure loyalty failure"),
-    (4, "Premium, Rs 1.90Cr balance, NPS 3, Missed EMI Rs 86,139",
-        "Only confirmed full churn risk combo (NPS<=3 + missed EMI)"),
-    (5, "Premium, Rs 1.88Cr balance, NPS 2, credit_score 487",
-        "Segmentation mismatch + NPS below threshold"),
-]
+    # --- Transactions (with period filter if provided) ---
+    txn_query = "SELECT * FROM transactions"
+    if period_start and period_end:
+        txn_query += (
+            f" WHERE transaction_date >= '{period_start}'"
+            f" AND transaction_date <= '{period_end}'"
+        )
+    txn_df = pd.read_sql(txn_query, conn)
+    total_txns = len(txn_df)
 
-METHODOLOGY = [
-    ("Data Source",           "data/banking_mock.db (SQLite)"),
-    ("Tables Used",           "customers, transactions, loan_emi"),
-    ("Date Range Analysed",   "08-Apr-2024 to 07-May-2024"),
-    ("Customers Analysed",    "3,225"),
-    ("Transactions Analysed", "50,000"),
-    ("Loan Records Analysed", "400"),
-    ("Churn Baseline",        "21% (681/3225)"),
-    ("Anomaly Threshold",     "amount > 2x customer monthly average"),
-    ("Report Generated",      "07-May-2026"),
-    ("Currency",              "INR (Rs)"),
-    ("NPS Scale",             "0-10"),
-]
+    # Anomaly flags from transactions
+    anomaly_txns = len(txn_df[txn_df["is_anomaly"] == 1]) if "is_anomaly" in txn_df.columns else 0
+
+    conn.close()
+
+    return {
+        "customers_df":    customers_df,
+        "churned_df":      churned_df,
+        "top10_df":        top10_df,
+        "seg_df":          seg_df,
+        "city_df":         city_df,
+        "loan_df":         loan_df,
+        "txn_df":          txn_df,
+        "total_customers": total_customers,
+        "total_churned":   total_churned,
+        "churn_rate":      churn_rate,
+        "avg_balance":     avg_balance,
+        "avg_nps":         avg_nps,
+        "avg_credit":      avg_credit,
+        "total_loans":     total_loans,
+        "missed_count":    missed_count,
+        "delayed_count":   delayed_count,
+        "missed_pct":      missed_pct,
+        "delayed_pct":     delayed_pct,
+        "stress_rate":     stress_rate,
+        "churn_risk_count": churn_risk_count,
+        "total_txns":      total_txns,
+        "anomaly_txns":    anomaly_txns,
+    }
+
+# ---------------------------------------------------------------------------
+# Load live data from DB — called once in main, passed to all builders
+# ---------------------------------------------------------------------------
+def build_shared_structures(data):
+    """Convert live DB data into report-ready shared structures."""
+    d = data
+
+    KPIS = [
+        ("Total Customers",            f"{d['total_customers']:,}"),
+        ("Total Churned",              f"{d['total_churned']:,}"),
+        ("Churn Rate",                 f"{d['churn_rate']:.2f}%"),
+        ("Baseline Churn Rate",        "21.00%"),
+        ("Avg Balance (Churned)",      f"\u20b9{d['avg_balance']:,.2f}"),
+        ("Avg NPS (Churned)",          f"{d['avg_nps']:.2f} / 10"),
+        ("Avg Credit Score (Churned)", f"{d['avg_credit']:.2f}"),
+    ]
+
+    SEGMENT_DATA = [
+        (row["segment"],
+         int(row["churned"]),
+         int(row["total"]),
+         float(row["churn_rate"]),
+         row["status"])
+        for _, row in d["seg_df"].iterrows()
+    ]
+
+    CITY_DATA = [
+        (row["city"],
+         int(row["churned"]),
+         int(row["total"]),
+         float(row["churn_rate"]))
+        for _, row in d["city_df"].iterrows()
+    ]
+
+    TOP10_CUSTOMERS = [
+        (i + 1,
+         f"{row['balance']:,.2f}",
+         int(row["credit_score"]),
+         int(row["nps_score"]),
+         row["segment"],
+         row["city"],
+         int(row["tenure"]))
+        for i, (_, row) in enumerate(d["top10_df"].iterrows())
+    ]
+
+    LOAN_EMI = [
+        ("Total Loans",          f"{d['total_loans']:,}"),
+        ("Missed EMIs",          f"{d['missed_count']} ({d['missed_pct']:.2f}%)"),
+        ("Delayed EMIs",         f"{d['delayed_count']} ({d['delayed_pct']:.2f}%)"),
+        ("Combined Stress Rate", f"{d['stress_rate']:.2f}%"),
+        ("Churned + Missed EMI", f"{d['churn_risk_count']} customers"),
+    ]
+
+    # Dynamic key findings based on live data
+    top_city      = d["city_df"].iloc[0]
+    bottom_city   = d["city_df"].iloc[-1]
+    premium_row   = d["seg_df"][d["seg_df"]["segment"] == "Premium"]
+    premium_rate  = float(premium_row["churn_rate"].values[0]) if len(premium_row) else 0
+    premium_status= str(premium_row["status"].values[0]) if len(premium_row) else "NORMAL"
+
+    KEY_FINDINGS = [
+        f"Overall churn rate is {d['churn_rate']:.2f}% vs 21.00% baseline "
+        f"({'ABOVE' if d['churn_rate'] > 21 else 'WITHIN'} threshold).",
+        f"Churned customers average NPS of {d['avg_nps']:.2f}/10 "
+        f"{'— dangerously close to the 3.0 churn risk floor.' if d['avg_nps'] < 4 else '.'}",
+        f"Premium segment churn at {premium_rate:.2f}% is {premium_status}.",
+        f"{d['stress_rate']:.2f}% combined EMI stress rate "
+        f"({'above' if d['stress_rate'] > 30 else 'within'} 30% monitoring threshold).",
+        f"{top_city['city']} leads churn volume ({int(top_city['churned'])}); "
+        f"{bottom_city['city']} has the lowest rate ({bottom_city['churn_rate']:.2f}%).",
+        f"{d['churn_risk_count']} customers present full churn risk combo "
+        f"(churned + missed EMI) — highest priority outreach targets.",
+    ]
+
+    RECOMMENDATIONS = [
+        ("Activate Premium Segment Retention Protocol",
+         f"Deploy targeted retention campaign for Premium customers with NPS <= 4. "
+         f"Current Premium churn: {premium_rate:.2f}% (threshold: 25%). "
+         f"Target: reduce below 23% within 60 days."),
+        ("Implement Pre-Churn Transaction Spike Alert",
+         "Configure Anomaly Agent to escalate customers with 2+ anomalous transactions "
+         "in 30-day window + NPS <= 4 to retention desk within 24 hours."),
+        ("Cross-Reference EMI Stress Against NPS",
+         f"Run query joining loan_emi (Missed/Delayed) against customers with NPS <= 3. "
+         f"{d['churn_risk_count']} confirmed churn risk combo customers require "
+         f"immediate outreach."),
+    ]
+
+    # Dynamic anomalies based on live thresholds
+    ANOMALIES = []
+    ano_id = 1
+    if d["churn_rate"] > 25:
+        ANOMALIES.append((
+            f"ANO-{ano_id:03d}",
+            f"Overall Churn Rate Breach ({d['churn_rate']:.2f}% > 25%)",
+            "CRITICAL", 9, "New"))
+        ano_id += 1
+    if premium_rate > 25:
+        ANOMALIES.append((
+            f"ANO-{ano_id:03d}",
+            f"Premium Segment Churn Rate Breach ({premium_rate:.2f}% > 25%)",
+            "CRITICAL", 9, "New"))
+        ano_id += 1
+    if d["avg_nps"] <= 3:
+        ANOMALIES.append((
+            f"ANO-{ano_id:03d}",
+            f"Churned Customer Avg NPS at or below risk floor ({d['avg_nps']:.2f}/10)",
+            "CRITICAL", 9, "New"))
+        ano_id += 1
+    if d["churn_risk_count"] > 0:
+        ANOMALIES.append((
+            f"ANO-{ano_id:03d}",
+            f"Churn Risk Combo: {d['churn_risk_count']} customers with NPS<=3 + Missed EMI",
+            "CRITICAL", 9, "New"))
+        ano_id += 1
+    if d["stress_rate"] > 30:
+        ANOMALIES.append((
+            f"ANO-{ano_id:03d}",
+            f"Portfolio EMI Stress Rate {d['stress_rate']:.2f}% (threshold 30%)",
+            "WARNING", 6, "New"))
+        ano_id += 1
+    if d["anomaly_txns"] > 0:
+        ANOMALIES.append((
+            f"ANO-{ano_id:03d}",
+            f"Spend Spike Alert: {d['anomaly_txns']:,} anomalous transactions detected",
+            "WARNING", 6, "New"))
+        ano_id += 1
+    if not ANOMALIES:
+        ANOMALIES.append(("ANO-001", "No anomalies detected in current period.",
+                          "NORMAL", 0, "Clear"))
+
+    PRIORITY_LIST = [
+        (i + 1,
+         f"{row['segment']}, \u20b9{row['balance']:,.0f} balance, "
+         f"NPS {int(row['nps_score'])}/10, Tenure {int(row['tenure'])} yrs",
+         "High balance loss — review for retention opportunity")
+        for i, (_, row) in enumerate(
+            d["top10_df"][d["top10_df"]["nps_score"] <= 4].head(5).iterrows()
+        )
+    ]
+    if not PRIORITY_LIST:
+        PRIORITY_LIST = [(1, "No high-priority customers identified.", "")]
+
+    METHODOLOGY = [
+        ("Data Source",            f"data/banking_mock.db (SQLite)"),
+        ("Tables Used",            "customers, transactions, loan_emi"),
+        ("Customers Analysed",     f"{d['total_customers']:,}"),
+        ("Transactions Analysed",  f"{d['total_txns']:,}"),
+        ("Loan Records Analysed",  f"{d['total_loans']:,}"),
+        ("Churn Baseline",         "21% (681/3225)"),
+        ("Anomaly Threshold",      "amount > 2x customer monthly average"),
+        ("Report Generated",       RUN_LABEL),
+        ("Currency",               "INR (Rs)"),
+        ("NPS Scale",              "0-10"),
+    ]
+
+    return (KPIS, SEGMENT_DATA, CITY_DATA, TOP10_CUSTOMERS,
+            LOAN_EMI, KEY_FINDINGS, RECOMMENDATIONS,
+            ANOMALIES, PRIORITY_LIST, METHODOLOGY)
 
 # ===========================================================================
 # EXCEL REPORT
 # ===========================================================================
-def build_excel():
+def build_excel(KPIS, SEGMENT_DATA, CITY_DATA, TOP10_CUSTOMERS,
+                LOAN_EMI, KEY_FINDINGS, RECOMMENDATIONS,
+                ANOMALIES, PRIORITY_LIST, METHODOLOGY):
     from openpyxl import Workbook
     from openpyxl.styles import (PatternFill, Font, Alignment, Border, Side,
                                  numbers)
@@ -564,7 +741,9 @@ def build_excel():
 # ===========================================================================
 # PDF REPORT
 # ===========================================================================
-def build_pdf():
+def build_pdf(KPIS, SEGMENT_DATA, CITY_DATA, TOP10_CUSTOMERS,
+              LOAN_EMI, KEY_FINDINGS, RECOMMENDATIONS,
+              ANOMALIES, PRIORITY_LIST, METHODOLOGY):
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import cm
     from reportlab.lib import colors
@@ -651,7 +830,6 @@ def build_pdf():
         PDF_PATH, pagesize=A4,
         leftMargin=1.8*cm, rightMargin=1.8*cm,
         topMargin=1.8*cm, bottomMargin=2.2*cm,
-        onFirstPage=footer, onLaterPages=footer
     )
 
     story = []
@@ -898,54 +1076,61 @@ def build_pdf():
 # ===========================================================================
 # POWERBI CSV
 # ===========================================================================
-def build_csv():
-    headers = [
-        "report_date", "period_start", "period_end",
-        "total_customers", "total_churned", "churn_rate_pct", "baseline_rate_pct",
-        "avg_balance_churned", "avg_nps_churned", "avg_credit_score_churned",
-        "premium_churn_rate", "standard_churn_rate", "basic_churn_rate",
-        "mumbai_churn_rate", "delhi_churn_rate", "bengaluru_churn_rate",
-        "pune_churn_rate", "hyderabad_churn_rate", "gurugram_churn_rate",
-        "emi_stress_rate", "critical_anomalies", "warning_anomalies",
-        "period_transactions_churned",
-        "report_file_excel", "report_file_pdf",
+def build_csv(data):
+    """
+    Fix 3 — Customer-level CSV rows so Power BI can slice
+    by customer, segment, city, NPS, balance etc.
+    One row per churned customer + joined loan EMI status.
+    """
+    churned_df = data["churned_df"].copy()
+    loan_df    = data["loan_df"].copy()
+
+    # Join loan EMI status onto churned customers
+    loan_latest = (
+        loan_df.sort_values("emi_status")
+               .drop_duplicates(subset=["customer_id"], keep="first")
+    [["customer_id", "loan_type", "loan_amount", "emi_amount", "emi_status"]]
+    )
+    merged = churned_df.merge(loan_latest, on="customer_id", how="left")
+
+    # Add derived columns for Power BI
+    merged["is_anomaly"]          = 0  # placeholder — set by Anomaly Agent
+    merged["anomaly_severity"]    = "NONE"
+    merged["anomaly_description"] = ""
+    merged["churn_risk_combo"]    = (
+        (merged["nps_score"] <= 3) &
+        (merged["emi_status"] == "Missed")
+    ).astype(int)
+    merged["report_generated_at"] = RUN_TS
+    merged["data_source"]         = "banking_mock.db"
+    merged["report_date"]         = RUN_LABEL
+    merged["baseline_churn_rate"] = 21.00
+    merged["actual_churn_rate"]   = data["churn_rate"]
+    merged["churn_status"]        = (
+        "CRITICAL" if data["churn_rate"] > 25
+        else "WARNING" if data["churn_rate"] > 21
+        else "NORMAL"
+    )
+
+    # Select and rename final columns
+    export_cols = [
+        "customer_id", "age", "gender", "city", "segment",
+        "credit_score", "balance", "estimated_salary",
+        "tenure", "products_number", "active_member",
+        "nps_score", "account_type", "kyc_status",
+        "loan_type", "loan_amount", "emi_amount", "emi_status",
+        "churn_risk_combo", "is_anomaly", "anomaly_severity",
+        "anomaly_description", "actual_churn_rate",
+        "baseline_churn_rate", "churn_status",
+        "report_date", "report_generated_at", "data_source",
     ]
+    # Only export columns that exist
+    export_cols = [c for c in export_cols if c in merged.columns]
+    export_df   = merged[export_cols]
 
-    row = [
-        "07-May-2026",
-        "08-Apr-2024",
-        "07-May-2024",
-        3225,
-        681,
-        21.12,
-        21.00,
-        8551041.11,   # plain number, no Rs symbol
-        3.16,
-        639.88,
-        25.32,
-        20.65,
-        15.15,
-        22.45,
-        19.78,
-        21.17,
-        21.32,
-        21.39,
-        20.61,
-        31.00,
-        5,
-        5,
-        864,
-        "ChurnReport_2026-05-07_Apr-May-2024.xlsx",
-        "ChurnReport_2026-05-07_Apr-May-2024.pdf",
-    ]
-
-    # Write UTF-8 BOM for PowerBI/Excel compatibility
-    with open(CSV_PATH, "w", newline="", encoding="utf-8-sig") as f:
-        writer = csv.writer(f)
-        writer.writerow(headers)
-        writer.writerow(row)
-
-    print(f"[CSV]  Saved: {CSV_PATH}")
+    # Write UTF-8 BOM for Power BI / Excel compatibility
+    export_df.to_csv(CSV_PATH, index=False, encoding="utf-8-sig")
+    print(f"[CSV]  Saved: {CSV_PATH} ({len(export_df):,} rows)")
 
 
 # ===========================================================================
@@ -953,10 +1138,34 @@ def build_csv():
 # ===========================================================================
 if __name__ == "__main__":
     print("BankSight AI — Report Agent starting...")
-    build_excel()
-    build_pdf()
-    build_csv()
+    print(f"Loading live data from: {DB_PATH}")
+
+    # Load live data from banking_mock.db
+    data = load_data_from_db()
+
+    # Build shared structures from live data
+    (KPIS, SEGMENT_DATA, CITY_DATA, TOP10_CUSTOMERS,
+     LOAN_EMI, KEY_FINDINGS, RECOMMENDATIONS,
+     ANOMALIES, PRIORITY_LIST, METHODOLOGY) = build_shared_structures(data)
+
+    print(f"  Customers loaded:    {data['total_customers']:,}")
+    print(f"  Churned customers:   {data['total_churned']:,} ({data['churn_rate']:.2f}%)")
+    print(f"  Transactions loaded: {data['total_txns']:,}")
+    print(f"  Loan records loaded: {data['total_loans']:,}")
+    print(f"  Anomaly count:       {data['anomaly_txns']:,} flagged transactions")
+    print()
+
+    build_excel(KPIS, SEGMENT_DATA, CITY_DATA, TOP10_CUSTOMERS,
+                LOAN_EMI, KEY_FINDINGS, RECOMMENDATIONS,
+                ANOMALIES, PRIORITY_LIST, METHODOLOGY)
+
+    build_pdf(KPIS, SEGMENT_DATA, CITY_DATA, TOP10_CUSTOMERS,
+              LOAN_EMI, KEY_FINDINGS, RECOMMENDATIONS,
+              ANOMALIES, PRIORITY_LIST, METHODOLOGY)
+
+    build_csv(data)
+
     print("\nAll three reports generated successfully.")
     print(f"  Excel : {EXCEL_PATH}")
     print(f"  PDF   : {PDF_PATH}")
-    print(f"  CSV   : {CSV_PATH}")
+    print(f"  CSV   : {CSV_PATH} ({data['total_churned']:,} customer-level rows)")
