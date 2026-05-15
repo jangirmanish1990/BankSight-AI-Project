@@ -9,7 +9,7 @@ Run:
 
 Requires:
     - data/banking_mock.db (run data/setup_db.py first)
-    - .env file with OPENAI_API_KEY
+    - .env file with ANTHROPIC_API_KEY
 """
 
 import os
@@ -22,6 +22,8 @@ import streamlit as st
 from datetime import datetime
 from dotenv import load_dotenv
 
+load_dotenv()
+
 # ---------------------------------------------------------------------------
 # Path setup — add project root to sys.path so agents can be imported
 # ---------------------------------------------------------------------------
@@ -29,9 +31,17 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
+from agents.sql_agent      import run_sql_agent
+from agents.analysis_agent import run_analysis_agent
+from agents.anomaly_agent  import run_anomaly_agent
+from agents.report_agent   import run_report_agent
+from agents.pbip_generator import generate_pbip
+
 DB_PATH = os.path.join(BASE_DIR, "data", "banking_mock.db")
 
-# Auto-setup database if it doesn't exist (for Streamlit Cloud)
+# ---------------------------------------------------------------------------
+# Auto-setup database if it doesn't exist (Streamlit Cloud + local fallback)
+# ---------------------------------------------------------------------------
 if not os.path.exists(DB_PATH):
     with st.spinner("🔧 Setting up database for first run..."):
         import subprocess
@@ -40,13 +50,6 @@ if not os.path.exists(DB_PATH):
             cwd=BASE_DIR, check=True
         )
     st.rerun()
-
-load_dotenv()
-
-from agents.sql_agent      import run_sql_agent
-from agents.analysis_agent import run_analysis_agent
-from agents.anomaly_agent  import run_anomaly_agent
-from agents.report_agent   import run_report_agent
 
 # ---------------------------------------------------------------------------
 # Page config
@@ -580,23 +583,18 @@ def render_charts(chart_data):
             )
             fig.add_hline(y=21, line_dash="dash", line_color="#6B7A99",
                           annotation_text="Baseline 21%",
-                          annotation_position="bottom right",
-                          annotation_font_size=11,
-                          annotation_font_color="#6B7A99")
+                          annotation_position="top right")
             fig.add_hline(y=25, line_dash="dot", line_color="#D93025",
                           annotation_text="Critical 25%",
-                          annotation_position="bottom left",
-                          annotation_font_size=11,
-                          annotation_font_color="#D93025")
+                          annotation_position="top left")
             fig.update_layout(
                 plot_bgcolor="#FFFFFF", paper_bgcolor="#FFFFFF",
                 font_family="DM Sans", showlegend=False,
                 title_font_size=14, title_font_color="#1F3864",
                 margin=dict(t=40, b=20, l=10, r=10),
-                height=300,
-                yaxis=dict(range=[0, 32]),
+                height=280,
             )
-            fig.update_traces(textposition="outside", textfont_size=12)
+            fig.update_traces(textposition="outside")
             st.plotly_chart(fig, use_container_width=True)
 
     # Chart 2 — Churn rate by city
@@ -891,6 +889,42 @@ def render_agent_response(results: dict):
                     key=f"dl_{ftype}_{id(fpath)}",
                 )
 
+    # PBIP download button — Power BI Project file
+    df = results.get("sql", {}).get("dataframe")
+    if df is not None and len(df) > 0:
+        st.markdown("---")
+        st.markdown(
+            '<span class="agent-tag tag-report">📊 Power BI</span> '
+            'Download as Power BI Project (.pbip) — open directly in Power BI Desktop',
+            unsafe_allow_html=True)
+
+        col_pbip, col_info = st.columns([2, 3])
+        with col_pbip:
+            with st.spinner("Generating PBIP..."):
+                context = results.get("analysis", {}).get(
+                    "key_metrics", {}).get("context", "churn")
+                pbip_bytes = generate_pbip(
+                    df=df,
+                    report_title="BankSight AI",
+                    context=context,
+                    analysis_output=results.get("analysis"),
+                    anomaly_output=results.get("anomaly"),
+                )
+            run_date = datetime.now().strftime("%Y%m%d")
+            st.download_button(
+                label="⬇️ Download Power BI Project (.pbip.zip)",
+                data=pbip_bytes,
+                file_name=f"BankSight_{context}_{run_date}.zip",
+                mime="application/zip",
+                key=f"dl_pbip_{id(df)}",
+            )
+        with col_info:
+            st.caption(
+                "📌 How to open: Extract the ZIP → double-click the "
+                "`.pbip` file → Power BI Desktop opens with your data, "
+                "measures, and charts pre-built. Requires Power BI Desktop."
+            )
+
 
 def _render_inline_chart(df: pd.DataFrame):
     """Auto-detect best chart from DataFrame columns."""
@@ -909,18 +943,14 @@ def _render_inline_chart(df: pd.DataFrame):
             text=seg["churn_rate"].apply(lambda x: f"{x}%"),
         )
         fig.add_hline(y=21, line_dash="dash", line_color="#6B7A99",
-                      annotation_text="Baseline 21%",
-                      annotation_position="bottom right",
-                      annotation_font_size=11,
-                      annotation_font_color="#6B7A99")
+                      annotation_text="Baseline 21%")
         fig.update_layout(
-            height=280, showlegend=False,
+            height=260, showlegend=False,
             plot_bgcolor="#FFFFFF", paper_bgcolor="#FFFFFF",
             margin=dict(t=36,b=10,l=10,r=10),
             font_family="DM Sans",
-            yaxis=dict(range=[0, 32]),
         )
-        fig.update_traces(textposition="outside", textfont_size=12)
+        fig.update_traces(textposition="outside")
         st.plotly_chart(fig, use_container_width=True)
 
     # Transaction spend trend
