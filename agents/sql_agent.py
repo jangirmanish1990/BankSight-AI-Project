@@ -22,6 +22,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Support both local .env and Streamlit Cloud secrets
+import streamlit as st
+try:
+    if "OPENAI_API_KEY" in st.secrets:
+        os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
+except Exception:
+    pass  # Running locally — use .env instead
+
 # ---------------------------------------------------------------------------
 # Paths & config
 # ---------------------------------------------------------------------------

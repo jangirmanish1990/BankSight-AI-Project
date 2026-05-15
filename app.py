@@ -9,7 +9,7 @@ Run:
 
 Requires:
     - data/banking_mock.db (run data/setup_db.py first)
-    - .env file with ANTHROPIC_API_KEY
+    - .env file with OPENAI_API_KEY
 """
 
 import os
@@ -22,8 +22,6 @@ import streamlit as st
 from datetime import datetime
 from dotenv import load_dotenv
 
-load_dotenv()
-
 # ---------------------------------------------------------------------------
 # Path setup — add project root to sys.path so agents can be imported
 # ---------------------------------------------------------------------------
@@ -31,12 +29,24 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
+DB_PATH = os.path.join(BASE_DIR, "data", "banking_mock.db")
+
+# Auto-setup database if it doesn't exist (for Streamlit Cloud)
+if not os.path.exists(DB_PATH):
+    with st.spinner("🔧 Setting up database for first run..."):
+        import subprocess
+        subprocess.run(
+            ["python", "data/setup_db.py"],
+            cwd=BASE_DIR, check=True
+        )
+    st.rerun()
+
+load_dotenv()
+
 from agents.sql_agent      import run_sql_agent
 from agents.analysis_agent import run_analysis_agent
 from agents.anomaly_agent  import run_anomaly_agent
 from agents.report_agent   import run_report_agent
-
-DB_PATH = os.path.join(BASE_DIR, "data", "banking_mock.db")
 
 # ---------------------------------------------------------------------------
 # Page config

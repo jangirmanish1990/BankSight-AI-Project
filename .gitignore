@@ -25,5 +25,4 @@ venv/
 .DS_Store
 Thumbs.db
 
-# Raw data CSVs (large files)
-data/raw/
+.streamlit/secrets.toml

@@ -21,6 +21,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Support both local .env and Streamlit Cloud secrets
+import streamlit as st
+try:
+    if "OPENAI_API_KEY" in st.secrets:
+        os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
+except Exception:
+    pass  # Running locally — use .env instead
+
 # ---------------------------------------------------------------------------
 # BankSight benchmarks — all agents must reference these
 # ---------------------------------------------------------------------------
@@ -151,7 +159,7 @@ def run_analysis_agent(
 
     # Step 3 — Call OpenAI API
     try:
-        client = OpenAI()
+        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         response = client.chat.completions.create(
             model="gpt-4o",
             max_tokens=1000,
